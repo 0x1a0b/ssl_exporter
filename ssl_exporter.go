@@ -67,13 +67,17 @@ func (e *Exporter) Collect(ch chan<- prometheus.Metric) {
 	var peerCertificates []*x509.Certificate
 
 	// Parse the target and return the appropriate connection protocol and target address
-	target, proto, err := parseTarget(e.target)
+	target, hostname, proto, err := parseTarget(e.target)
 	if err != nil {
 		log.Errorln(err)
 		ch <- prometheus.MustNewConstMetric(
 			tlsConnectSuccess, prometheus.GaugeValue, 0,
 		)
 		return
+	}
+
+	if len(e.tlsConfig.ServerName) == 0 {
+		e.tlsConfig.ServerName = hostname
 	}
 
 	ch <- prometheus.MustNewConstMetric(
@@ -205,6 +209,7 @@ func (e *Exporter) Collect(ch chan<- prometheus.Metric) {
 
 func probeHandler(w http.ResponseWriter, r *http.Request, tlsConfig *tls.Config) {
 	target := r.URL.Query().Get("target")
+	tlsConfig.ServerName = r.URL.Query().Get("servername")
 
 	// The following timeout block was taken wholly from the blackbox exporter
 	//   https://github.com/prometheus/blackbox_exporter/blob/master/main.go
@@ -260,25 +265,25 @@ func contains(certs []*x509.Certificate, cert *x509.Certificate) bool {
 	return false
 }
 
-func parseTarget(target string) (parsedTarget string, proto string, err error) {
+func parseTarget(target string) (parsedTarget, hostname, proto string, err error) {
 	if !strings.Contains(target, "://") {
 		target = "//" + target
 	}
 
 	u, err := url.Parse(target)
 	if err != nil {
-		return "", proto, err
+		return "", "", proto, err
 	}
 
 	if u.Scheme != "" {
 		if u.Scheme == "https" {
-			return u.String(), "https", nil
+			return u.String(), u.Hostname(), "https", nil
 		}
-		return "", proto, errors.New("can't handle the scheme '" + u.Scheme + "' - try providing the target in the format <host>:<port>")
+		return "", u.Hostname(), proto, errors.New("can't handle the scheme '" + u.Scheme + "' - try providing the target in the format <host>:<port>")
 	} else if u.Port() == "" {
-		return "https://" + u.Host, "https", nil
+		return "https://" + u.Host, u.Hostname(), "https", nil
 	}
-	return u.Host, "tcp", nil
+	return u.Host, u.Hostname(), "tcp", nil
 }
 
 func init() {

@@ -112,6 +112,12 @@ scrape_configs:
         replacement: 127.0.0.1:9219 # SSL exporter.
 ```
 
+#### Parameters
+
+- `target` - the target address to probe (required)
+- `servername` - the server name used to verify the hostname on returned
+  certificates and support SNI (defaults to the hostname of `target`)
+
 ### Targets
 
 The exporter uses the provided uri to decide which client (http or tcp) to use
